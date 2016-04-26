@@ -1,0 +1,206 @@
+#!/bin/bash
+helpstr="PRIMIFY - A primer-picking program by Will Bradshaw
+Usage: primify [option]... FILE [TARGET]
+Picks primers from TARGET region of specified sequence in FILE using
+    primer3. Optionally tests specificity of primers using BLAST.
+By default, if given a target region, primer3 will only search for 
+    primers within 1000 bp of the edges of this target. The size of
+    this buffer zone can be modified with -d. Alternatively, a specific
+    included region can be specified using -i.
+For convenience, the search can be given an ID to 
+
+Positional arguments:
+ 1. FASTA file providing source sequence
+ 2. Target region in START,LENGTH format (optional)
+
+Primer3 options (defaults):
+ -s: Sequence from FILE from which to pick primers (1)
+ -o: Output file prefix / ID (p3)
+ -n: Number of primers/pairs to generate (100)
+ -c: Name of configuration file to use from installed directory (seq)
+ -b: Size of buffer zone to search around target, in bp (1000)
+ -i: Region of sequence to search in START,LENGTH format [overrides -b]
+
+Primer3 running modes:
+ -f: Pick forward primer only.
+ -r: Pick reverse primer only.
+Note that if both -f and -r are specified, the script will issue a 
+warning and pick both primers.
+
+BLAST Options (defaults):
+ -B: Perform BLAST specificity check
+ -Q: Minimum primer coverage to count as a match (75)
+      (lower = more sensitive)
+ -S: Subject file for alignment (same as primer3 sequence file)
+ -D: BLAST database for alignment [overrides -S]
+ -O: Any additional options to pass to BLAST
+ -X: Expected number of sequence matches in the subject/database (1)
+
+Output Options (defaults):
+ -t: Name of table output file (primify_table.txt)
+
+Other options:
+ -h: Display help text and exit."
+
+#############
+# ARGUMENTS #
+#############
+
+unset seq outpref npairs config buffer inc fronly
+unset runblast blast_qc blast_sb blast_db blast_opts table
+while [ $OPTIND -le $# ]; do
+    # Optional arguments
+    while getopts "s:o:n:c:b:i:BQ:S:D:O:X:t:frh" opt; do
+        case "$opt" in
+            # Primer3 Options
+            s)
+                seq=$OPTARG
+                ;;
+            o)
+                outpref=$OPTARG
+                ;;
+            n)
+                npairs=$OPTARG
+                ;;
+            c)
+                config=$OPTARG
+                ;;
+            b)
+                buffer=$OPTARG
+                ;;
+            i)
+                inc=$OPTARG
+                ;;
+            # Primer3 running modes
+            f)
+                fronly="-f"
+                ;;
+            r)
+                fronly="-r"
+                ;;
+            # BLAST options
+            B)
+                runblast="true"
+                ;;
+            Q)
+                blast_qc=$OPTARG
+                ;;
+            O)
+                blast_opts=$OPTARG
+                ;;
+            S)
+                blast_sb=$OPTARG
+                ;;
+            D)
+                blast_db=$OPTARG
+                ;;
+            X)
+                blast_exp=$OPTARG
+                ;;
+            # Output options
+            t)
+                table=$OPTARG
+                ;;
+            # Else:
+            h)
+                echo "$helpstr"
+                exit
+                ;;
+            *)
+                echo "Invalid argument:" $opt >&2
+                echo "$helpstr"
+                exit
+        esac
+    done
+    # Positional arguments:
+    if [[ -z "$seqfile" ]]; then
+        seqfile=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+    if [[ -z "$target" && "${@:$OPTIND:1}" != "-*" ]]; then
+        target=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+done
+shift $((OPTIND-1))
+
+# Argument errors and warnings:
+if [[ -z $seqfile ]]; then
+    >&2 echo "Error: Sequence file required."
+    echo "$helpstr"
+    exit
+fi
+if [[ -n $buffer && -n $inc ]]; then
+    >&2 echo "Warning: -i and -b both specified; overriding -b."
+fi
+if [[ -n $blast_sb && -n $blast_db ]]; then
+    >&2 echo "Warning: -S and -D both specified; overriding -S."
+fi
+if [[ -n $fonly && -n $ronly ]]; then
+    >&2 echo "Warning: -f and -r both specified; picking primer pairs."
+    unset fronly
+fi
+
+# Defaults for optional arguments:
+: ${seq:=1}
+: ${outpref:=p3}
+: ${npairs:=100}
+: ${config:=seq}
+: ${buffer:=1000}
+: ${blast_qc:=75}
+: ${blast_sb:=$seqfile}
+: ${blast_exp:=1}
+: ${table:=primify_table.txt}
+
+##########
+# SCRIPT #
+##########
+if [[ -z "$fronly" ]]; then
+    pvar="primer pair"
+else
+    pvar="primer"
+fi
+echo "Finding ${pvar}s for ${outpref}:"
+# 1: Primer picking with primer3:
+argstring="-c $config -n $npairs -s $seq -o $outpref"
+if [[ -z "$inc" || "$inc" == "0,0" ]]; then
+    argstring="$argstring -b $buffer"
+else
+    argstring="$argstring -i $inc"
+fi
+outname="${outpref}_${seq}_${target}_${config}.txt"
+primify_core $fronly $argstring $seqfile $target
+nprimers=$(grep _SEQUENCE $outname | wc -l)
+if [[ -z "$fronly" ]]; then
+    nprimers=$(expr "$nprimers" / 2)
+fi
+if [[ $nprimers -eq 0 ]]; then
+    >&2 echo "No primers found. Exiting."
+    exit
+else
+    echo "$nprimers ${pvar}(s) found."
+fi
+# 2: Specificity checking with BLAST:
+if [[ "$runblast" == "true" ]]; then
+    echo -n "Running specificity check with BLAST..."
+    argstring="$fronly -Q $blast_qc -X $blast_exp"
+    if [[ -n "$blast_db" ]]; then
+        argstring="$argstring -D $blast_db"
+    else
+        argstring="$argstring -S $blast_sb"
+    fi
+    pair=$(primify_check $argstring $outname)
+    echo "done."
+    if [[ "$pair" == '!'* ]]; then
+        >&2 echo "Warning: No specific ${pvar}s found for ${outpref}."
+        >&2 echo "Using most specific ${pvar} available instead."
+        pair=${pair#!}
+    fi
+    echo "Best ${pvar}:" $pair
+else
+    pair=0
+    echo "Using ${pvar} 0 without specificity check."
+fi
+argstring="$fronly -id $outpref -n $pair $outname $table"
+primify_out $argstring
+exit

@@ -1,0 +1,84 @@
+#!/usr/bin/python
+
+# Arguments and Libraries
+import argparse,re,sys
+parser = argparse.ArgumentParser(description='Extract primer information\
+        from a primer3 report file and write it to a\
+        tab-delimited text file.')
+parser.add_argument('reportfile', help='Path to report file.',
+        metavar='<report_file>')
+parser.add_argument('outfile', help='Path to output file.',
+        metavar='<output_file>')
+parser.add_argument('-n', help='Primer/pair to extract.',
+        metavar='<int>', default=0)
+parser.add_argument('-id', help='ID of primer/pair.',
+        metavar='<str>', default='X')
+parser.add_argument('-f', help='Extract only forward primer.',
+        dest='f', action='store_true', default=False)
+parser.add_argument('-r', help='Extract only reverse primer.',
+        dest='r', action='store_true', default=False)
+args = parser.parse_args()
+
+# Report generation
+report = open(args.reportfile, 'r').read().split('\n')[:-1]
+
+patterns_f = [
+    'PRIMER_LEFT_'+str(args.n)+'_SEQUENCE$',
+    'PRIMER_LEFT_'+str(args.n)+'_TM$',
+    'PRIMER_LEFT_'+str(args.n)+'$',
+    ]
+patterns_r = [
+    'PRIMER_RIGHT_'+str(args.n)+'_SEQUENCE$',
+    'PRIMER_RIGHT_'+str(args.n)+'_TM$',
+    'PRIMER_RIGHT_'+str(args.n)+'$',
+    ]
+if args.f and args.r:
+    raise ValueError('-f and -r are mutually exclusive!')
+elif args.f:
+    patterns_raw = patterns_f
+elif args.r:
+    patterns_raw = patterns_r
+else:
+    patterns_raw = patterns_f + patterns_r + \
+            ['PRIMER_PAIR_'+str(args.n)+'_PRODUCT_SIZE$']
+patterns = [re.compile(r) for r in patterns_raw]
+values = ['']*len(patterns)
+for n in range(len(patterns)):
+    p = patterns[n]
+    for r in report:
+        rsplit = r.split('=')
+        if re.search(p, rsplit[0]):
+            values[n] = rsplit[1]
+if len(values[0])==0:
+    sys.exit('Report file contains no primers.')
+
+# Define parts of table entry:
+ID=args.id+' '
+if not args.r:
+    fseq = values[0]+' '
+    ftm = values[1]+' '
+    fstart = int(values[2].split(',')[0])
+    fpos = str(fstart)+' '
+if not args.f:
+    n = [-3 if args.r else 0][0]
+    rseq=values[n+3]+' '
+    rtm=values[n+4]+' '
+    rstart = int(values[n+5].split(',')[0])
+    rpos = str(rstart)+' '
+if not (args.f or args.r):
+    product=values[6]+' '
+    coords=str(min(fstart, rstart))+','+values[6]+'\n'
+# Generate table row
+if args.f:
+    outstr = ID + 'F ' + fseq + ' ' + ftm + fpos + ' \n'
+elif args.r:
+    outstr = ID + 'R ' + rseq + ' ' + rtm + rpos + ' \n'
+else:
+    outstr = ID + 'F ' + fseq + product + ftm + fpos + coords
+    outstr = outstr + '  R ' + rseq + ' ' + rtm + rpos + ' \n'
+# Append to table file
+out = open(args.outfile, 'a')
+try:
+    out.write(outstr)
+finally:
+    out.close()

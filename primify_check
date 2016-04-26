@@ -1,0 +1,80 @@
+#!/bin/bash
+while [ $OPTIND -le $# ]; do
+    # Optional arguments
+    while getopts "o:frQ:S:D:O:X:" opt; do
+        case "$opt" in
+            # Primer3 Options
+            o)
+                outpref=$OPTARG
+                ;;
+            f)
+                fronly="f"
+                ;;
+            r)
+                fronly="r"
+                ;;
+            Q)
+                blast_qc=$OPTARG
+                ;;
+            O)
+                blast_opts=$OPTARG
+                ;;
+            S)
+                blast_sb=$OPTARG
+                ;;
+            D)
+                blast_db=$OPTARG
+                ;;
+            X)
+                exp=$OPTARG
+                ;;
+        esac
+    done
+    if [[ -z "$report" ]]; then
+        report=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+done
+
+# Given a primer3 report count the number of incidences
+# of the primers in a specified sequence file
+
+npairs=$(grep -E _SEQUENCE $report | grep -Eo '[0-9]+' | tail -n 1)
+for n in $(seq 0 $npairs); do
+    matches=0
+    # Get primer sequences from report file
+    # left=forward primer, right=reverse
+    re_left=PRIMER_LEFT_${n}_SEQUENCE\=
+    re_right=PRIMER_RIGHT_${n}_SEQUENCE\=
+    left=$(grep $re_left $report)
+    right=$(grep $re_right $report)
+    left=${left##$re_left}
+    right=${right##$re_right}
+    # BLAST for matches
+    argstring="-c $blast_qc -t blastn-short $blast_opts"
+    if [[ -n "$blast_db" ]]; then
+        argstring="-d $blast_db $argstring"
+    else
+        argstring="-s $blast_sb $argstring"
+    fi
+    if [[ "$fronly" != "r" ]]; then
+        left_matches=$(wblast -Q $left $argstring | wc -l)
+        matches=$(expr $matches + $left_matches)
+    fi
+    if [[ "$fronly" != "f" ]]; then
+        right_matches=$(wblast -Q $right $argstring | wc -l)
+        matches=$(expr $matches + $right_matches)
+    fi
+    # Check match number
+    if [[ $right_matches -le $exp &&  $left_matches -le $exp ]]; then
+        echo $n # Return first primer/pair with expected specificity
+        break
+    elif [[ $n -eq $npairs ]]; then
+        echo !$min_pair
+        # Return most specific pair available, with a warning
+    elif [[ -z $min_pair || $matches -lt $min_matches ]]; then
+        min_pair=$n
+        min_matches=$matches
+    fi
+done
+exit

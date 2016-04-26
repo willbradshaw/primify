@@ -1,0 +1,120 @@
+#!/bin/bash
+#################################################################
+# PRIMIFY_CORE: primer3 wrapper script for primify
+#################################################################
+# See main primify script for options and help
+#################################################################
+while [ $OPTIND -le $# ]; do
+    while getopts "s:o:n:c:b:i:fr" opt; do
+        case "$opt" in
+            s)
+                seqnum=$OPTARG
+                ;;
+            o)
+                outpref=$OPTARG
+                ;;
+            n)
+                npairs=$OPTARG
+                ;;
+            c)
+                config=$OPTARG
+                ;;
+            b)
+                buffer=$OPTARG
+                ;;
+            i)
+                inc=$OPTARG
+                ;;
+            f)
+                # Pick forward primer only
+                fonly="true"
+                ;;
+            r)
+                # Pick reverse primer only
+                ronly="true"
+                ;;
+        esac
+    done
+    if [[ -z "$seqfile" ]]; then
+        seqfile=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+    if [[ -z "$target" && "${@:$OPTIND:1}" != "-*" ]]; then
+        target=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+done
+shift $((OPTIND-1))
+
+##########
+# SCRIPT #
+##########
+# Extract sequence from file and get information
+seqindex=$(index $seqfile 1 len -s $seqnum)
+sequence=$(echo "$seqindex" | tail -n 1)
+id=$(echo "$seqindex" | head -1)
+seq_len=${#sequence}
+echo "Sequence length: ${#sequence}"
+
+# Get target information from target string
+if [[ -z "$target" || "$target" == "0,0" ]]; then
+    notarget="true"
+    echo "No target region given."
+else
+    target_start=$(echo $target | cut -d"," -f1)
+    target_len=$(echo $target | cut -d"," -f2)
+    target_end=$(($target_start + $target_len - 1))
+    target_region="$target_start,$target_len"
+    echo "Target start/length/end: $target_start $target_len $target_end"
+fi
+
+# Compute included search region around target region
+# (hugely increases speed for large sequences)
+if [[ -n "$inc" ]]; then
+    inc_start=$(echo $inc | cut -d"," -f1)
+    inc_len=$(echo $inc | cut -d"," -f2)
+    if [[ "$inc_len" == "len" ]]; then
+        inc_len=$(expr "$seq_len" - "$inc_start")
+    fi
+elif [[ "$notarget" != "true" ]]; then
+    # Else if target given, use buffer size
+    inc_start=$(python -c "print max(${target_start}-$buffer,0)")
+    buffer_pre=$(python -c "print min(${target_start}, $buffer)")
+    buffer_post=$(python -c "print min(${seq_len}-${target_end}, $buffer)")
+    inc_len=$(($buffer_pre + $buffer_post + $target_len - 1))
+fi
+if [[ -n "$inc_start" ]]; then
+    inc_end=$(($inc_start + $inc_len - 1))
+    inc_region="$inc_start,$inc_len"
+    echo "Included region start/length/end: $inc_start $inc_len $inc_end"
+else
+    echo "Picking from entire sequence."
+fi
+
+# Pass arguments to Primer3 through temporary config file:
+tpardir="$PRIMER3_THERMOPARAMS_DIR"
+cfiledir="$PRIMIFY_CONFIG_DIR"
+tfile="/tmp/p3tmp_${target}"
+rm -f $tfile
+echo "SEQUENCE_ID=$id
+SEQUENCE_TEMPLATE=$sequence
+PRIMER_NUM_RETURN=$npairs
+PRIMER_THERMODYNAMIC_PARAMETERS_PATH=$tpardir" > $tfile
+if [[ -n "$inc_start" ]]; then
+    echo "SEQUENCE_INCLUDED_REGION=$inc_region" >> $tfile
+fi
+if [[ "$notarget" != "true" ]]; then
+    echo "SEQUENCE_TARGET=$target_region" >> $tfile
+fi
+if [[ "$fonly" == "true" ]]; then
+    echo "PRIMER_PICK_RIGHT_PRIMER=0" >> $tfile
+fi
+if [[ "$ronly" == "true" ]]; then
+    echo "PRIMER_PICK_LEFT_PRIMER=0" >> $tfile
+fi
+cat "$cfiledir"/"$config" >> $tfile
+# Run Primer3
+echo -n "Picking primers..."
+primer3_core -output ${outpref}_${seqnum}_${target}_${config}.txt $tfile
+echo " Done."
+exit

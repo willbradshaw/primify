@@ -1,0 +1,106 @@
+#!/bin/bash
+module load primer3
+module load BLAST
+helpstr="PRIMIFY_TABLE - Primify wrapper script for multiple inputs
+Usage: primify [option]... SEQ_FILE TABLE_FILE
+Each line of TABLE_FILE should be a space-separated list of form 
+'OUTPREF SEQ TARGET [INC]', where:
+    OUTPREF = file output prefix / ID for that primer search
+    SEQ = sequence in SEQ_FILE from which to pick primers
+    TARGET = Region in START,LENGTH format to include between primer pair
+    INC = Region in START,LENGTH format in which to pick primers
+In the absence of INC primify will search the region within -b nt of
+TARGET. To search the whole sequence without a target region, specify
+a TARGET of '0,0'.
+
+Positional arguments:
+ 1. FASTA file providing source sequence
+ 2. Input file formatted as described above.
+
+Primify running modes:
+ -f: Pick forward primer only.
+ -r: Pick reverse primer only.
+Note that if both -f and -r are specified, the script will issue a 
+warning and pick both primers.
+
+Primify options (defaults):
+ -n: Number of primers/pairs to generate (100)
+ -c: Name of configuration file to use from installed directory (seq)
+ -b: Size of buffer zone to search around target, in bp (1000)
+ -t: Name of primify output file (primify_table.txt)
+Note that the included region, if specified, will override -b.
+
+BLAST Options (defaults):
+ -B: Perform BLAST specificity check
+ -Q: Minimum primer coverage to count as a match (75)
+      (lower = more sensitive)
+ -S: Subject file for alignment (same as primer3 sequence file)
+ -D: BLAST database for alignment [overrides -S]
+ -O: Any additional options to pass to BLAST
+ -X: Expected number of sequence matches in the subject/database (1)
+
+Other options:
+ -h: Display help text and exit."
+
+#############
+# ARGUMENTS #
+#############
+
+unset argstring seqfile infile inc
+while [ $OPTIND -le $# ]; do
+    # Optional arguments
+    while getopts "n:c:b:BQ:S:D:O:X:t:frh" opt; do
+        case "$opt" in
+            # Primer3 Options
+            [ncbBQOSDXt])
+                argstring="$argstring -$opt $OPTARG"
+                ;;
+            [frB])
+                argstring="-$opt $argstring"
+                ;;
+            # Else:
+            h)
+                echo "$helpstr"
+                exit
+                ;;
+            *)
+                echo "Invalid argument:" $opt >&2
+                echo "$helpstr"
+                exit
+        esac
+    done
+    # Positional arguments:
+    if [[ -z "$seqfile" ]]; then
+        seqfile=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+    if [[ -z "$infile" ]]; then
+        infile=${@:$OPTIND:1}
+        OPTIND=$(expr $OPTIND + 1)
+    fi
+done
+shift $((OPTIND-1))
+
+# Argument errors and warnings:
+if [[ -z $seqfile ]]; then
+    >&2 echo "Error: Sequence file required."
+    echo "$helpstr"
+    exit
+fi
+if [[ -z $infile ]]; then
+    >&2 echo "Error: Input table file required."
+    echo "$helpstr"
+    exit
+fi
+
+##########
+# SCRIPT #
+##########
+
+while read outpref seq target inc; do
+    if [[ -n "$inc" ]]; then
+        argstring="$argstring -i $inc"
+    fi
+    primify -s $seq -o $outpref $argstring $seqfile $target
+done < $infile
+exit

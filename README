@@ -1,0 +1,196 @@
+PRIMIFY - A primer-picking script by Will Bradshaw
+Latest version: 2.0.0 on April 25th 2016
+
+Primify is a command-line primer-picking tool which:
+ - Designs PCR and sequencing primers using primer3
+ - Optionally selects the most specific primers found using BLAST
+ - Parses the results into a user-friendly output file
+By using pre-written configuration files containing primer3 options,
+primify simplifies the process of configuring primer3. Using the wrapper
+script primify_table, the tool can also automate the workflow for picking
+multiple specific primer pairs from the same sequence file, greatly 
+reducing the time required for reliable primer picking.
+
+-----------
+1: CONTENTS
+-----------
+
+In addition to this README file, primify consists of the following:
+    1: primify - the main primer-picking script
+    2: primify_table - wrapper script enabling simultaneous
+        input of multiple targets
+    3: primify_core - helper script for primer picking
+    4: primify_check - helper script for specificity checking
+    5: primify_out - Python helper script producing output file
+    6: config - a directory containing built-in configuration files
+N.B. It is not recommended to call scripts 3-5 directly.
+
+---------------
+2: INSTALLATION
+---------------
+
+To install primify, clone this repository to a local directory and
+add it to your PATH. Make sure that all prerequisite programs are
+also installed and accessible:
+ - Python
+ - BLAST command line application
+ - primer3
+
+Finally, add the following lines to your .bash_profile or .bashrc
+
+export PRIMER3_THERMOPARAMS_DIR="/path/to/primer3/config"
+export PRIMIFY_CONFIG_DIR="/path/to/config/dir"
+
+with the strings replaced by the paths on your machine of the
+location of primer3's thermodynamic parameter files and primify's
+config files, respectively
+
+--------
+3: USAGE
+--------
+
+NB: More information on usage and options can be found by running
+primify or primify_table with the -h option
+
+To pick primer pairs from anywhere within a FASTA sequence, run
+
+    primify [OPTIONS] SEQ_FILE
+
+To pick only primers that flank a desired target region for PCR, run
+
+    primify [OPTIONS] SEQ_FILE TARGET
+
+where TARGET is formatted as START,LENGTH, i.e. the start co-ordinate
+in the source sequence followed by the target length. In both cases,
+use the -B option to specify that primer picking should be followed
+by specificity checking using BLAST. To pick only forward or reverse
+primers, use the -f and -r options respectively.
+
+To pick multiple distinct primer pairs from the same sequence file, 
+a tabular input file is required in which each line takes the form
+
+    ID SEQ TARGET [INC]
+
+where
+    ID = file output prefix/ID for that primer search
+    SEQ = sequence within the FASTA file from which to pick primers
+    TARGET = target region as above
+    INC = region from which to pick primers, in START,LENGTH format
+if present, INC should be larger than and contain TARGET. The user can
+decline to specify a target region by setting TARGET to 0,0.
+
+Given such a target file, primify can be run by calling
+
+    primify_table [OPTIONS] SEQ_FILE TABULAR_FILE
+
+with -B, -f and -r having the same effects as before.
+
+----------------------
+4: CONFIGURATION FILES
+----------------------
+
+To simplify the process of calling primer3 and improve the 
+reproducibility and reliability of primer picking, primify uses
+configuration files containing pre-specified options, which are passed
+to primer3 during execution. These files can be found in the config
+subdirectory of the primify directory. More information about primer3
+options can be found in that programs documentation, but the most 
+important options are:
+    PRIMER_MIN_SIZE, PRIMER_OPT_SIZE, PRIMER_MAX_SIZE: set the minimum,
+        optimal and maximum primer lengths in nucleotides
+    PRIMER_MIN_TM, PRIMER_OPT_TM, PRIMER_MAX_TM: minimum, optimal and
+        maximum acceptable melting temperatures (in degrees Celsius)
+    PRIMER_MIN_GC, PRIMER_MAX_GC: minumum and maximum GC content
+    PRIMER_PAIR_MAX_DIFF: maximum Tm difference between paired primers
+    PRIMER_MAX_POLY_X: maximum polyN length in primer (i.e. maximum 
+        number of the same nucleotide that can occur in a row)
+    PRIMER_GC_CLAMP: required number of G/C nucleotides at the 3' end
+    PRIMER_MAX_END_GC: maximum number of G/C nucleotides at the 3' end
+    PRIMER_PRODUCT_SIZE_RANGE: acceptable product size ranges
+
+All of these can be edited to customise primer picking. Product size
+ranges should be given as a space-separated list of the same form as
+
+    150-250 100-300 301-400 401-500 ...
+
+Primer3 will first try to find primers in the first range; if there are
+not enough in that range, it will try the second, and so on.
+
+Other parameters can also be added to the configuration file to 
+customise primer picking (see primer3 documentation); however, the
+following parameters are protected and should not be added, as they are
+manipulated by primify:
+    SEQUENCE_ID
+    SEQUENCE_TEMPLATE
+    PRIMER_NUM_RETURN
+    PRIMER_THERMODYNAMIC_PARAMETERS_PATH
+    SEQUENCE_INCLUDED_REGION
+    SEQUENCE_TARGET
+    PRIMER_PICK_RIGHT_PRIMER
+    PRIMER_PICK_LEFT_PRIMER
+
+The configuration files provided by default with the current version of
+primify are:
+
+    seq: optimal conditions for Sanger sequencing primers
+    seq_relaxed: less stringent conditions for Sanger sequencing primers
+    seq_noclamp: as seq_relaxed, but without a 3' GC clamp
+    race: preferred conditions for SMARTer RACE primers
+    race_relaxed: less stringent conditions for SMARTer RACE primers
+    lenient: general, non-stringent primer-picking parameters for PCR
+
+By default, the seq configuration file is used when calling primer3.
+To use one of the others, call one of
+
+    primify -c <config_file> [OPTIONS] SEQ_FILE [TARGET]
+    primify_table -c <config_file> [OPTIONS] SEQ_FILE TABULAR_FILE
+
+To use your own configuration file, simply save it in the config
+subdirectory and specify it in the script call as above.
+
+---------
+5. OUTPUT
+---------
+
+Each search performed by primify will return a primer3 report file
+with name format ID_SEQ_TARGET_CONFIG.txt. In addition to these
+report files, the primers/pairs found will be appended to an output
+table file. The format of this output depends on the form of the
+primer search:
+
+1: Paired primers for PCR
+
+    ID  "F"   F_SEQ   PRODUCT_SIZE  F_TM  F_POS   COORDS
+    ID  "R"   R_SEQ                 R_TM  R_POS
+
+where
+    ID = The file output prefix / ID for that primer pair
+    F/R_SEQ = The sequence of the forward/reverse primer
+    PRODUCT_SIZE = The predicted size of the PCR product
+    F/R_TM = The melting temperature of the forward/reverse primer
+    F/R_POS = The starting co-ordinate of the forward/reverse primer
+        on the searched sequence
+    COORDS = The co-ordinates of the predicted PCR product (in
+        START,LENGTH format) on the searched sequence
+
+2: Forward primers only
+
+    ID  "F"  F_SEQ  F_TM  F_POS
+
+3: Reverse primers only
+
+    ID  "R"  R_SEQ  R_TM  R_POS
+
+At present, the format of the output file cannot be modified.
+
+-------
+6. TODO
+-------
+
+- Add ability to customise output format
+- Add troubleshooting section to README
+
+Unfortunately, multithreading on command-line BLAST is not currently
+available. If this feature is re-introduced, it will be added to 
+primify (specificity checking, if enabled, is usually the bottleneck
+step in the pipeline).
