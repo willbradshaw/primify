@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 while [ $OPTIND -le $# ]; do
     # Optional arguments
     while getopts "o:frQ:S:D:O:X:" opt; do

@@ -1,6 +1,5 @@
 #!/bin/bash
-module load primer3
-module load BLAST
+set -e
 helpstr="PRIMIFY_TABLE - Primify wrapper script for multiple inputs
 Usage: primify [option]... SEQ_FILE TABLE_FILE
 Each line of TABLE_FILE should be a space-separated list of form 
