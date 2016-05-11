@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/env bash
 set -e
 helpstr="PRIMIFY - A primer-picking program by Will Bradshaw
 Usage: primify [option]... FILE [TARGET]
