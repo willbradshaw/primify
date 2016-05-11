@@ -93,8 +93,8 @@ else
 fi
 
 # Pass arguments to Primer3 through temporary config file:
-tpardir="$PRIMER3_THERMOPARAMS_DIR"
-cfiledir="$PRIMIFY_CONFIG_DIR"
+tpardir="$(dirname $(which primer3_core))/primer3_config"
+cfiledir="$(dirname $(which primify))/config"
 tfile="/tmp/p3tmp_${target}"
 rm -f $tfile
 echo "SEQUENCE_ID=$id

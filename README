@@ -31,19 +31,11 @@ N.B. It is not recommended to call scripts 3-5 directly.
 
 To install primify, clone this repository to a local directory and
 add it to your PATH. Make sure that all prerequisite programs are
-also installed and accessible:
+also installed and in your PATH:
+
  - Python
  - BLAST command line application
  - primer3
-
-Finally, add the following lines to your .bash_profile or .bashrc
-
-export PRIMER3_THERMOPARAMS_DIR="/path/to/primer3/config"
-export PRIMIFY_CONFIG_DIR="/path/to/config/dir"
-
-with the strings replaced by the paths on your machine of the
-location of primer3's thermodynamic parameter files and primify's
-config files, respectively
 
 --------
 3: USAGE
