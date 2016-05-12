@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 set -e
 #################################################################
 # PRIMIFY_CORE: primer3 wrapper script for primify

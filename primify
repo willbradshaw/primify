@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 set -e
 helpstr="PRIMIFY - A primer-picking program by Will Bradshaw
 Usage: primify [option]... FILE [TARGET]
@@ -110,7 +110,7 @@ while [ $OPTIND -le $# ]; do
             *)
                 echo "Invalid argument:" $opt >&2
                 echo "$helpstr"
-                exit
+                exit 1
         esac
     done
     # Positional arguments:
@@ -129,7 +129,7 @@ shift $((OPTIND-1))
 if [[ -z $seqfile ]]; then
     >&2 echo "Error: Sequence file required."
     echo "$helpstr"
-    exit
+    exit 1
 fi
 if [[ -n $buffer && -n $inc ]]; then
     >&2 echo "Warning: -i and -b both specified; overriding -b."
@@ -176,7 +176,7 @@ if [[ -z "$fronly" ]]; then
     nprimers=$(expr "$nprimers" / 2)
 fi
 if [[ $nprimers -eq 0 ]]; then
-    >&2 echo "No primers found. Exiting."
+    echo "No primers found. Exiting."
     exit
 else
     echo "$nprimers ${pvar}(s) found."

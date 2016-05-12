@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 set -e
 helpstr="PRIMIFY_TABLE - Primify wrapper script for multiple inputs
 Usage: primify [option]... SEQ_FILE TABLE_FILE
@@ -65,7 +65,7 @@ while [ $OPTIND -le $# ]; do
             *)
                 echo "Invalid argument:" $opt >&2
                 echo "$helpstr"
-                exit
+                exit 1
         esac
     done
     # Positional arguments:
@@ -84,12 +84,12 @@ shift $((OPTIND-1))
 if [[ -z $seqfile ]]; then
     >&2 echo "Error: Sequence file required."
     echo "$helpstr"
-    exit
+    exit 1
 fi
 if [[ -z $infile ]]; then
     >&2 echo "Error: Input table file required."
     echo "$helpstr"
-    exit
+    exit 1
 fi
 
 ##########
