@@ -101,5 +101,6 @@ while read outpref seq target inc; do
         argstring="$argstring -i $inc"
     fi
     primify -s $seq -o $outpref $argstring $seqfile $target
+    echo
 done < $infile
 exit

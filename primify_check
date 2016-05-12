@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+blast_opts="-best_hit_overhang 0.25 -best_hit_score_edge 0.05"
 while [ $OPTIND -le $# ]; do
     # Optional arguments
     while getopts "o:frQ:S:D:O:X:" opt; do
@@ -14,16 +15,16 @@ while [ $OPTIND -le $# ]; do
                 fronly="r"
                 ;;
             Q)
-                blast_qc=$OPTARG
+                blast_opts="$blast_opts -qcov_hsp_perc $OPTARG"
                 ;;
             O)
-                blast_opts=$OPTARG
+                blast_opts="$blast_opts $OPTARG"
                 ;;
             S)
-                blast_sb=$OPTARG
+                blast_opts="$blast_opts -subject $OPTARG"
                 ;;
             D)
-                blast_db=$OPTARG
+                blast_opts="$blast_opts -db $OPTARG"
                 ;;
             X)
                 exp=$OPTARG
@@ -38,7 +39,11 @@ done
 
 # Given a primer3 report count the number of incidences
 # of the primers in a specified sequence file
-
+fstring='qseqid sseqid pident qcovhsp length mismatch gapopen gaps sstrand qstart qend sstart send'
+function blastseq {
+    echo $1 | blastn -outfmt "6 $fstring" -task blastn-short $blast_opts|
+    column -t | awk -v i=$ident '{if ($3>=i)print}'
+}
 npairs=$(grep -E _SEQUENCE $report | grep -Eo '[0-9]+' | tail -n 1)
 for n in $(seq 0 $npairs); do
     matches=0
@@ -58,11 +63,11 @@ for n in $(seq 0 $npairs); do
         argstring="-s $blast_sb $argstring"
     fi
     if [[ "$fronly" != "r" ]]; then
-        left_matches=$(wblast -Q $left $argstring | wc -l)
+        left_matches=$(blastseq $left | wc -l)
         matches=$(expr $matches + $left_matches)
     fi
     if [[ "$fronly" != "f" ]]; then
-        right_matches=$(wblast -Q $right $argstring | wc -l)
+        right_matches=$(blastseq $right | wc -l)
         matches=$(expr $matches + $right_matches)
     fi
     # Check match number
