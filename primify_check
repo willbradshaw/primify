@@ -1,85 +1,96 @@
-#!/usr/bin/env bash
-blast_opts="-best_hit_overhang 0.25 -best_hit_score_edge 0.05"
-while [ $OPTIND -le $# ]; do
-    # Optional arguments
-    while getopts "o:frQ:S:D:O:X:" opt; do
-        case "$opt" in
-            # Primer3 Options
-            o)
-                outpref=$OPTARG
-                ;;
-            f)
-                fronly="f"
-                ;;
-            r)
-                fronly="r"
-                ;;
-            Q)
-                blast_opts="$blast_opts -qcov_hsp_perc $OPTARG"
-                ;;
-            O)
-                blast_opts="$blast_opts $OPTARG"
-                ;;
-            S)
-                blast_opts="$blast_opts -subject $OPTARG"
-                ;;
-            D)
-                blast_opts="$blast_opts -db $OPTARG"
-                ;;
-            X)
-                exp=$OPTARG
-                ;;
-        esac
-    done
-    if [[ -z "$report" ]]; then
-        report=${@:$OPTIND:1}
-        OPTIND=$(expr $OPTIND + 1)
-    fi
-done
+#!/usr/bin/env python
 
-# Given a primer3 report count the number of incidences
-# of the primers in a specified sequence file
-fstring='qseqid sseqid pident qcovhsp length mismatch gapopen gaps sstrand qstart qend sstart send'
-function blastseq {
-    echo $1 | blastn -outfmt "6 $fstring" -task blastn-short $blast_opts|
-    column -t | awk -v i=$ident '{if ($3>=i)print}'
-}
-npairs=$(grep -E _SEQUENCE $report | grep -Eo '[0-9]+' | tail -n 1)
-for n in $(seq 0 $npairs); do
+# Arguments and libraries
+import argparse,subprocess,sys,re, numpy as np
+parser = argparse.ArgumentParser(description='Align primers to a\
+    reference file using BLAST and return a list of the most specific\
+    primers available.')
+parser.add_argument('-f', help='Check only forward primers',
+        dest='f', action='store_true')
+parser.add_argument('-r', help='Check only reverse primers',
+        dest='r', action='store_true')
+parser.add_argument('-n', help='Number of best primers to find (1)',
+        metavar='<int>', default=1)
+parser.add_argument('-X', help='Number of expected query matches in\
+    reference sequence (1)', metavar='<int>', default=1)
+parser.add_argument('-Q', help='Minimum acceptable % query coverage.',
+        metavar='<int>', default=75)
+parser.add_argument('-S', help='Subject file for alignment.',
+        metavar='<str>', default="")
+parser.add_argument('-D', help='Database file for alignment.',
+        metavar='<str>', default="")
+parser.add_argument('-O', help='Other BLAST options.',
+        metavar='<str>', default="")
+parser.add_argument('reportfile', help='Path to report file.',
+        metavar='<report_file>')
+args = parser.parse_args()
+
+# Determine BLAST command string:
+fstring = "\'qseqid sseqid pident qcovhsp length mismatch gapopen gaps sstrand qstart qend sstart send\'"
+blast_cmd = ["blastn", "-best_hit_overhang", "0.25", 
+    "-best_hit_score_edge", "0.05", "-qcov_hsp_perc", str(args.Q),
+    "-outfmt", "6 " + fstring, "-task", "blastn-short"]
+if len(args.D) > 0:
+    blast_cmd += ["-db", str(args.D)]
+elif len(args.S) > 0:
+    blast_cmd += ["-subject", str(args.S)]
+else:
+    sys.exit("Error: No subject or database file specified.")
+if len(args.O)>0:
+    blast_cmd += str(args.O).split(" ")
+
+# BLAST alignment call function
+def blastcount(sequence):
+    echo = subprocess.Popen(["echo", str(sequence)], stdout=subprocess.PIPE)
+    blast = subprocess.Popen(blast_cmd, stdin=echo.stdout, stdout=subprocess.PIPE)
+    output = blast.communicate()[0].split("\n")[:-1]
+    return len(output)
+
+# Read and process report file
+report = open(args.reportfile, 'r').read().split('\n')[:-1]
+rdict = {}
+for line in report:
+    if re.search('PRIMER_.*_SEQUENCE', line):
+        n = int(re.findall("\d+", line)[0])
+        splitline = line.split("=")
+        if "LEFT" in splitline[0]:
+            key="left"
+        elif "RIGHT" in splitline[0]:
+            key="right"
+        else:
+            sys.exit("Misformatted report file.")
+        if n not in rdict.keys():
+            rdict[n] = {}
+        rdict[n][key] = splitline[1]
+npairs = max(rdict.keys())
+
+# Find best primer pair indices
+best = {"names":np.array([], dtype=int),"counts":np.array([], dtype=int)}
+for n in range(npairs + 1):
+    # Get match counts
     matches=0
-    # Get primer sequences from report file
-    # left=forward primer, right=reverse
-    re_left=PRIMER_LEFT_${n}_SEQUENCE\=
-    re_right=PRIMER_RIGHT_${n}_SEQUENCE\=
-    left=$(grep $re_left $report)
-    right=$(grep $re_right $report)
-    left=${left##$re_left}
-    right=${right##$re_right}
-    # BLAST for matches
-    argstring="-c $blast_qc -t blastn-short $blast_opts"
-    if [[ -n "$blast_db" ]]; then
-        argstring="-d $blast_db $argstring"
-    else
-        argstring="-s $blast_sb $argstring"
-    fi
-    if [[ "$fronly" != "r" ]]; then
-        left_matches=$(blastseq $left | wc -l)
-        matches=$(expr $matches + $left_matches)
-    fi
-    if [[ "$fronly" != "f" ]]; then
-        right_matches=$(blastseq $right | wc -l)
-        matches=$(expr $matches + $right_matches)
-    fi
-    # Check match number
-    if [[ $right_matches -le $exp &&  $left_matches -le $exp ]]; then
-        echo $n # Return first primer/pair with expected specificity
-        break
-    elif [[ $n -eq $npairs ]]; then
-        echo !$min_pair
-        # Return most specific pair available, with a warning
-    elif [[ -z $min_pair || $matches -lt $min_matches ]]; then
-        min_pair=$n
-        min_matches=$matches
-    fi
-done
-exit
+    if not args.r:
+        matches = max(blastcount(rdict[n]["left"]), matches)
+    if not args.f:
+        matches = max(blastcount(rdict[n]["right"]), matches)
+    # Update best primers
+    if len(best["names"]) < int(args.n):
+        best["names"] = np.append(best["names"], n)
+        best["counts"] = np.append(best["counts"], matches)
+    elif np.max(best["counts"]) > matches:
+        worst = np.nonzero((best["counts"] == np.max(best["counts"])))[0][-1]
+        best["names"] = np.append(np.delete(best["names"], worst), n)
+        best["counts"] = np.append(np.delete(best["counts"], worst), matches)
+    # Print and exit if enough good primer pairs found
+    if len(best["names"]) == int(args.n) and np.max(best["counts"]) <= int(args.X):
+        # Order pairs according to ascending match count
+        print >> sys.stderr, best # for debugging
+        out = best["names"][np.argsort(best["counts"])]
+        print ' '.join(map(str, out))
+        sys.exit()
+
+# Print best output and exit:
+print >> sys.stderr, best # for debugging
+out = best["names"][np.argsort(best["counts"])]
+print "!" + ' '.join(map(str, out))
+sys.exit()

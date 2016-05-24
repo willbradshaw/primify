@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+#set -e
 helpstr="PRIMIFY - A primer-picking program by Will Bradshaw
 Usage: primify [option]... FILE [TARGET]
 Picks primers from TARGET region of specified sequence in FILE using
@@ -17,7 +17,8 @@ Positional arguments:
 Primer3 options (defaults):
  -s: Sequence from FILE from which to pick primers (1)
  -o: Output file prefix / ID (p3)
- -n: Number of primers/pairs to generate (100)
+ -m: Total number of primers/pairs to generate with primer3 (100)
+ -n: Number of best primers to include in the output table (1)
  -c: Name of configuration file to use from installed directory (seq)
  -b: Size of buffer zone to search around target, in bp (1000)
  -i: Region of sequence to search in START,LENGTH format [overrides -b]
@@ -47,11 +48,11 @@ Other options:
 # ARGUMENTS #
 #############
 
-unset seq outpref npairs config buffer inc fronly
+unset seq outpref npairs config buffer inc fronly nout
 unset runblast blast_qc blast_sb blast_db blast_opts table
 while [ $OPTIND -le $# ]; do
     # Optional arguments
-    while getopts "s:o:n:c:b:i:BQ:S:D:O:X:t:frh" opt; do
+    while getopts "s:o:m:n:c:b:i:BQ:S:D:O:X:t:frh" opt; do
         case "$opt" in
             # Primer3 Options
             s)
@@ -61,6 +62,9 @@ while [ $OPTIND -le $# ]; do
                 outpref=$OPTARG
                 ;;
             n)
+                nout=$OPTARG
+                ;;
+            m)
                 npairs=$OPTARG
                 ;;
             c)
@@ -145,6 +149,7 @@ fi
 # Defaults for optional arguments:
 : ${seq:=1}
 : ${outpref:=p3}
+: ${nout:=1}
 : ${npairs:=100}
 : ${config:=seq}
 : ${buffer:=1000}
@@ -163,7 +168,7 @@ else
 fi
 echo "Finding ${pvar}s for ${outpref}:"
 # 1: Primer picking with primer3:
-argstring="-c $config -n $npairs -s $seq -o $outpref"
+argstring="-c $config -m $npairs -s $seq -o $outpref"
 if [[ -z "$inc" || "$inc" == "0,0" ]]; then
     argstring="$argstring -b $buffer"
 else
@@ -184,24 +189,25 @@ fi
 # 2: Specificity checking with BLAST:
 if [[ "$runblast" == "true" ]]; then
     echo -n "Running specificity check with BLAST..."
-    argstring="$fronly -Q $blast_qc -X $blast_exp"
+    argstring="$fronly -Q $blast_qc -X $blast_exp -n $nout"
     if [[ -n "$blast_db" ]]; then
         argstring="$argstring -D $blast_db"
     else
         argstring="$argstring -S $blast_sb"
     fi
-    pair=$(primify_check $argstring $outname)
+    pairs=$(primify_check $argstring $outname)
     echo "done."
-    if [[ "$pair" == '!'* ]]; then
-        >&2 echo "Warning: No specific ${pvar}s found for ${outpref}."
-        >&2 echo "Using most specific ${pvar} available instead."
-        pair=${pair#!}
+    if [[ "$pairs" == '!'* ]]; then
+        >&2 echo "Warning: Not enough specific ${pvar}s found for ${outpref}."
+        >&2 echo "Using most specific ${pvar}s available instead."
+        pairs=${pairs#!}
     fi
-    echo "Best ${pvar}:" $pair
+    echo "Best ${pvar}(s):" $pairs
 else
-    pair=0
-    echo "Using ${pvar} 0 without specificity check."
+    limit=$(python -c "print str(min($nprimers, $nout))")
+    pairs=$(seq "$limit")
+    echo "No specificity check."
 fi
-argstring="$fronly -id $outpref -n $pair $outname $table"
-primify_out $argstring
+argstring="$fronly -id $outpref $outname $table"
+primify_out $argstring -n "$pairs"
 exit

@@ -6,7 +6,7 @@ set -e
 # See main primify script for options and help
 #################################################################
 while [ $OPTIND -le $# ]; do
-    while getopts "s:o:n:c:b:i:fr" opt; do
+    while getopts "s:o:m:c:b:i:fr" opt; do
         case "$opt" in
             s)
                 seqnum=$OPTARG
@@ -14,7 +14,7 @@ while [ $OPTIND -le $# ]; do
             o)
                 outpref=$OPTARG
                 ;;
-            n)
+            m)
                 npairs=$OPTARG
                 ;;
             c)
