@@ -84,13 +84,13 @@ for n in range(npairs + 1):
     # Print and exit if enough good primer pairs found
     if len(best["names"]) == int(args.n) and np.max(best["counts"]) <= int(args.X):
         # Order pairs according to ascending match count
-        print >> sys.stderr, best # for debugging
+        #print >> sys.stderr, best # for debugging
         out = best["names"][np.argsort(best["counts"])]
         print ' '.join(map(str, out))
         sys.exit()
 
 # Print best output and exit:
-print >> sys.stderr, best # for debugging
+#print >> sys.stderr, best # for debugging
 out = best["names"][np.argsort(best["counts"])]
 print "!" + ' '.join(map(str, out))
 sys.exit()
