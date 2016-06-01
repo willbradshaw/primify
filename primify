@@ -198,8 +198,8 @@ if [[ "$runblast" == "true" ]]; then
     pairs=$(primify_check $argstring $outname)
     echo "done."
     if [[ "$pairs" == '!'* ]]; then
-        >&2 echo "Warning: Not enough specific ${pvar}s found for ${outpref}."
-        >&2 echo "Using most specific ${pvar}s available instead."
+        >&2 echo "Warning: No specific ${pvar}s found for ${outpref}."
+        >&2 echo "Using most specific ${pvar} available instead."
         pairs=${pairs#!}
     fi
     echo "Best ${pvar}(s):" $pairs
