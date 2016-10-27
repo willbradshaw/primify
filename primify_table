@@ -2,6 +2,7 @@
 set -e
 helpstr="PRIMIFY_TABLE - Primify wrapper script for multiple inputs
 Usage: primify [option]... SEQ_FILE TABLE_FILE
+
 Each line of TABLE_FILE should be a space-separated list of form 
 'OUTPREF SEQ TARGET [INC]', where:
     OUTPREF = file output prefix / ID for that primer search
@@ -23,6 +24,7 @@ Note that if both -f and -r are specified, the script will issue a
 warning and pick both primers.
 
 Primify options (defaults):
+ -o: Output directory for primer3 log files (current working directory)
  -m: Total number of primers/pairs to generate with primer3 (100)
  -n: Number of best primers to include in the output table (1)
  -c: Name of configuration file to use from installed directory (seq)
@@ -49,14 +51,17 @@ Other options:
 unset argstring seqfile infile inc
 while [ $OPTIND -le $# ]; do
     # Optional arguments
-    while getopts "n:c:b:BQ:S:D:O:X:t:frh" opt; do
+    while getopts "fro:m:n:c:b:t:BQ:S:D:O:X:h" opt; do
         case "$opt" in
             # Primer3 Options
-            [mncbBQOSDXt])
+            [mncbtQOSDX])
                 argstring="$argstring -$opt $OPTARG"
                 ;;
+            o)
+                outdir="$OPTARG"
+                ;;
             [frB])
-                argstring="-$opt $argstring"
+                argstring="$argstring -$opt"
                 ;;
             # Else:
             h)
@@ -93,15 +98,19 @@ if [[ -z $infile ]]; then
     exit 1
 fi
 
+# Defaults for optional arguments:
+: ${outdir:=$(pwd)}
+
 ##########
 # SCRIPT #
 ##########
 
+mkdir -p "$outdir"
 while read outpref seq target inc; do
     if [[ -n "$inc" ]]; then
         argstring="$argstring -i $inc"
     fi
-    primify -s $seq -o $outpref $argstring $seqfile $target
+    primify -s $seq -o "$outdir/$outpref" $argstring $seqfile $target
     echo
 done < $infile
 exit
