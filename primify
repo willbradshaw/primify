@@ -166,7 +166,7 @@ if [[ -z "$fronly" ]]; then
 else
     pvar="primer"
 fi
-echo "Finding ${pvar}s for ${outpref}:"
+echo "Finding ${pvar}s for $(basename ${outpref}):"
 # 1: Primer picking with primer3:
 argstring="-c $config -m $npairs -s $seq -o $outpref"
 if [[ -z "$inc" || "$inc" == "0,0" ]]; then
@@ -208,6 +208,6 @@ else
     pairs=$(seq "$limit")
     echo "No specificity check."
 fi
-argstring="$fronly -id $outpref $outname $table"
+argstring="$fronly -id $(basename $outpref) $outname $table"
 primify_out $argstring -n "$pairs"
 exit
