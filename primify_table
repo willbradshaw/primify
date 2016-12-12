@@ -107,6 +107,7 @@ fi
 
 mkdir -p "$outdir"
 while read outpref seq target inc; do
+    echo $outpref $seq $target $inc
     if [[ -n "$inc" ]]; then
         argstring="$argstring -i $inc"
     fi

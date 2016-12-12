@@ -204,9 +204,9 @@ if [[ "$runblast" == "true" ]]; then
     fi
     echo "Best ${pvar}(s):" $pairs
 else
-    limit=$(python -c "print str(min($nprimers, $nout))")
-    pairs=$(seq "$limit")
+    pairs=$(python -c "print ' '.join(map(str, range(min($nprimers, $nout))))")
     echo "No specificity check."
+    echo "Selected ${pvar}(s):" $pairs
 fi
 argstring="$fronly -id $(basename $outpref) $outname $table"
 primify_out $argstring -n "$pairs"
